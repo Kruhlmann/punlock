@@ -14,32 +14,47 @@ impl Bitwarden<()> {
         Self { email, session: () }
     }
 
-    pub async fn authenticate(self) -> anyhow::Result<Bitwarden<String>> {
+    pub async fn authenticate(self, domain: Option<String>) -> anyhow::Result<Bitwarden<String>> {
         Command::new("bw")
-            .args(&["logout"])
+            .args(["logout"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .await
+            .inspect(|_| tracing::debug!("spawn logout"))
+            .inspect_err(|error| tracing::error!(?error, "spawn logout"))
             .ok();
+        if let Some(ref d) = domain {
+            Command::new("bw")
+                .args(["config", "server", &d])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .await
+                .inspect(|_| tracing::debug!(?domain, "spawn config server"))
+                .inspect_err(|error| tracing::error!(?error, ?domain, "spawn config server"))
+                .ok();
+        }
         loop {
-            let password = rpassword::prompt_password(&format!(
-                "Enter bitwarden password for {}: ",
-                self.email
-            ))
-            .inspect_err(|error| tracing::error!(?error, "read password"))
-            .unwrap_or("".to_string());
+            let prompt = match domain {
+                Some(ref d) => format!("Enter password for bitwarden[{d}] user {}: ", self.email),
+                None => format!("Enter password for bitwarden user {}: ", self.email),
+            };
+            let password = rpassword::prompt_password(prompt)
+                .inspect_err(|error| tracing::error!(?error, "read password"))
+                .unwrap_or("".to_string());
             if password.trim().is_empty() {
                 continue;
             }
 
             let out = Command::new("bw")
-                .args(&["login", self.email.as_ref(), &password, "--raw"])
+                .args(["login", self.email.as_ref(), &password, "--raw"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .output()
                 .await
-                .inspect_err(|error| tracing::error!(?error, "bw login"))?;
+                .inspect(|_| tracing::debug!("spawn login"))
+                .inspect_err(|error| tracing::error!(?error, "spawn login"))?;
 
             if !out.status.success() {
                 let error = String::from_utf8_lossy(&out.stderr);
@@ -62,16 +77,16 @@ impl Bitwarden<()> {
 impl Bitwarden<String> {
     pub async fn fetch(&self, entry: &PunlockConfigurationEntry) -> anyhow::Result<String> {
         let bw = Command::new("bw")
-            .args(&["get", "item", &entry.id, "--session", &self.session])
+            .args(["get", "item", &entry.id, "--session", &self.session])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .inspect_err(|error| tracing::error!(?error, "bw get"))?;
+            .inspect_err(|error| tracing::error!(?error, "spawn get"))?;
 
         let output = bw
             .wait_with_output()
             .await
-            .inspect_err(|error| tracing::error!(?error, "bw output"))?;
+            .inspect_err(|error| tracing::error!(?error, "spawn get"))?;
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
@@ -97,12 +112,13 @@ impl Bitwarden<String> {
 
     pub async fn logout(&self) -> anyhow::Result<()> {
         Command::new("bw")
-            .args(&["logout", "--session", &self.session])
+            .args(["logout", "--session", &self.session])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .await
-            .inspect_err(|error| tracing::error!(?error, "bw logout"))?;
+            .inspect(|_| tracing::debug!("spawn logout"))
+            .inspect_err(|error| tracing::error!(?error, "spawn logout"))?;
         Ok(())
     }
 }

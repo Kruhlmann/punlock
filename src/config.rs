@@ -13,10 +13,14 @@ pub struct PunlockConfigurationEntry {
     pub id: String,
     pub query: String,
     pub path: String,
+    pub links: Option<Vec<String>>,
+    #[serde(default)]
+    pub public: bool,
 }
 
 #[derive(Deserialize)]
 pub struct PartialPunlockConfiguration {
+    pub domain: Option<String>,
     pub version: Option<String>,
     pub email: Option<String>,
     pub entries: Option<Vec<PunlockConfigurationEntry>>,
@@ -59,6 +63,7 @@ impl PartialPunlockConfiguration {
 pub struct PunlockConfiguration {
     pub version: String,
     pub email: Email,
+    pub domain: Option<String>,
     pub entries: Vec<PunlockConfigurationEntry>,
 }
 
@@ -67,6 +72,7 @@ impl TryFrom<PartialPunlockConfiguration> for PunlockConfiguration {
 
     fn try_from(value: PartialPunlockConfiguration) -> anyhow::Result<Self> {
         Ok(Self {
+            domain: value.domain,
             version: value
                 .version
                 .unwrap_or(LATEST_CONFIGURATION_VERSION.to_string()),
@@ -77,7 +83,7 @@ impl TryFrom<PartialPunlockConfiguration> for PunlockConfiguration {
             } else {
                 Email::from_stdin()
             },
-            entries: value.entries.unwrap_or(Vec::new()),
+            entries: value.entries.unwrap_or_default(),
         })
     }
 }

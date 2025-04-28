@@ -11,11 +11,12 @@ lazy_static! {
         ProjectDirs::from("dev", "kruhlmann", "punlock").unwrap();
     pub static ref USER_CONFIG_FILE_PATH: PathBuf =
         PROJECT_DIRS.config_dir().join(CONFIG_FILE_NAME.to_string());
-    pub static ref SYSTEM_CONFIG_PATH_CANDIDATES: Vec<PathBuf> = vec![
-        PathBuf::from(CONFIG_FILE_NAME.to_string()),
+    pub static ref HOME_DIRECTORY: PathBuf = dirs::home_dir().unwrap();
+    #[cfg(target_os = "linux")]
+    pub static ref RUNTIME_DIRECTORY: PathBuf = dirs::runtime_dir().unwrap();
+    pub static ref SYSTEM_CONFIG_PATH_CANDIDATES: Vec<PathBuf> = [PathBuf::from(CONFIG_FILE_NAME.to_string()),
         USER_CONFIG_FILE_PATH.to_path_buf(),
-        PathBuf::from("/etc/punlock/").join("CONFIG_FILE_NAME"),
-    ]
+        PathBuf::from("/etc/punlock/").join("CONFIG_FILE_NAME")]
     .to_vec();
     pub static ref EMAIL_REGEX: Regex = Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap();
 }

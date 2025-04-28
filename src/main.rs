@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let formattter = tracing_subscriber::fmt::Layer::new()
         .with_thread_names(true)
         .with_span_events(FmtSpan::FULL);
-    let filter = EnvFilter::try_from_default_env()?;
+    let filter = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("info"));
     tracing_subscriber::registry()
         .with(formattter)
         .with(filter)
@@ -37,13 +37,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         PartialPunlockConfiguration::try_from_default_path()?
     };
+
     let config: PunlockConfiguration = config.try_into()?;
 
     config
         .write_to_disk(USER_CONFIG_FILE_PATH.as_path())
         .await?;
 
-    let bitwarden = Bitwarden::new(config.email).authenticate().await?;
+    let bitwarden = Bitwarden::new(config.email)
+        .authenticate(config.domain)
+        .await?;
     let store = UnmountedSecretStore::new(bitwarden)
         .into_platform_store()
         .await?;

@@ -46,9 +46,9 @@ impl TryFrom<&str> for Email {
     }
 }
 
-impl Into<String> for Email {
-    fn into(self) -> String {
-        self.0.clone()
+impl From<Email> for String {
+    fn from(val: Email) -> Self {
+        val.0.clone()
     }
 }
 
