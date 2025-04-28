@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
@@ -8,7 +9,7 @@ use punlock::{
     store::UnmountedSecretStore,
 };
 use tracing_subscriber::{
-    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
+    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
 #[derive(Parser, Debug)]
