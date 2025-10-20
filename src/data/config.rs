@@ -1,15 +1,16 @@
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 use tokio::{fs::File, io::AsyncWriteExt};
 
-use crate::{
-    email::Email,
-    statics::{LATEST_CONFIGURATION_VERSION, SYSTEM_CONFIG_PATH_CANDIDATES},
+use crate::statics::{
+    DEFAULT_BITWARDEN_DOMAIN, LATEST_CONFIGURATION_VERSION, SYSTEM_CONFIG_PATH_CANDIDATES,
 };
 
-#[derive(Deserialize, Serialize, Debug)]
+use super::Domain;
+use super::Email;
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct PunlockConfigurationEntry {
     pub id: String,
     pub query: String,
@@ -19,12 +20,13 @@ pub struct PunlockConfigurationEntry {
     pub public: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 pub struct PartialPunlockConfiguration {
     pub domain: Option<String>,
     pub version: Option<String>,
     pub email: Option<String>,
     pub entries: Option<Vec<PunlockConfigurationEntry>>,
+    pub cache_token: Option<bool>,
 }
 
 impl TryFrom<&Path> for PartialPunlockConfiguration {
@@ -60,11 +62,12 @@ impl PartialPunlockConfiguration {
     }
 }
 
-#[derive(Serialize)]
+#[derive(serde::Serialize)]
 pub struct PunlockConfiguration {
+    pub cache_token: bool,
     pub version: String,
     pub email: Email,
-    pub domain: Option<String>,
+    pub domain: Domain,
     pub entries: Vec<PunlockConfigurationEntry>,
 }
 
@@ -73,7 +76,11 @@ impl TryFrom<PartialPunlockConfiguration> for PunlockConfiguration {
 
     fn try_from(value: PartialPunlockConfiguration) -> anyhow::Result<Self> {
         Ok(Self {
-            domain: value.domain,
+            cache_token: value.cache_token.unwrap_or(false),
+            domain: value
+                .domain
+                .unwrap_or(DEFAULT_BITWARDEN_DOMAIN.to_string())
+                .into(),
             version: value
                 .version
                 .unwrap_or(LATEST_CONFIGURATION_VERSION.to_string()),

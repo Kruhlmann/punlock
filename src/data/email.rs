@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::statics::EMAIL_REGEX;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 pub struct Email(String);
 
 impl Email {
