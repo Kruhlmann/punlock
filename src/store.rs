@@ -1,6 +1,11 @@
-use std::{os::unix::fs::PermissionsExt, path::PathBuf, sync::Arc};
+use std::{
+    os::unix::fs::PermissionsExt,
+    path::PathBuf,
+    process::{Command, Stdio},
+    sync::Arc,
+};
 
-use futures::{StreamExt, stream::FuturesUnordered};
+use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
 use tokio::io::AsyncWriteExt;
 
 use crate::{
@@ -52,6 +57,12 @@ impl UnixSecretStore {
 
     pub async fn write_secrets(&self, entries: &[PunlockConfigurationEntry]) -> anyhow::Result<()> {
         let mut tasks = FuturesUnordered::new();
+        Command::new("bw")
+            .args(["sync", "--session", &self.bitwarden.session])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .inspect_err(|error| tracing::error!(?error, "spawn get"))?;
 
         for entry in entries.iter() {
             let root = self.root_path.clone();
@@ -116,6 +127,7 @@ impl UnixSecretStore {
                                 std::os::windows::fs::symlink_file(&src, &dst)?;
                                 Ok(())
                             })
+                            .inspect_err(|error| tracing::error!(src = ?path, dst = ?link_path, ?error, "symlink failed"))
                             .await
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))??;
 

@@ -5,8 +5,8 @@ use tokio::process::Command;
 use crate::{config::PunlockConfigurationEntry, email::Email};
 
 pub struct Bitwarden<S> {
-    email: Email,
-    session: S,
+    pub email: Email,
+    pub session: S,
 }
 
 impl Bitwarden<()> {
@@ -104,7 +104,10 @@ impl Bitwarden<String> {
 
         let secret = match result.as_string() {
             Some(s) => s.to_owned(),
-            None => anyhow::bail!("invalid item"),
+            None => {
+                tracing::error!(?data, ?expr, "find secret");
+                anyhow::bail!("invalid item")
+            }
         };
 
         Ok(secret)
