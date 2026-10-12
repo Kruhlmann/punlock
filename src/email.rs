@@ -29,8 +29,10 @@ impl Email {
             }
         }
     }
+}
 
-    pub fn as_ref(&self) -> &str {
+impl AsRef<str> for Email {
+    fn as_ref(&self) -> &str {
         &self.0
     }
 }
@@ -56,5 +58,51 @@ impl From<Email> for String {
 impl std::fmt::Display for Email {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_valid_emails() {
+        for case in [
+            "user@example.com",
+            "first.last@sub.domain.org",
+            "a@b.co",
+            "name+tag@example.io",
+        ] {
+            let email = Email::try_from(case).expect("should accept valid email");
+            assert_eq!(email.as_ref(), case);
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_emails() {
+        for case in [
+            "",
+            "plainaddress",
+            "@missing-local.org",
+            "missing-at-sign.org",
+            "no-tld@domain",
+            "space in@local.com",
+            "user@domain@",
+            "user @domain.com",
+        ] {
+            assert!(
+                Email::try_from(case).is_err(),
+                "should reject invalid email: {:?}",
+                case
+            );
+        }
+    }
+
+    #[test]
+    fn display_and_into_string_round_trip() {
+        let email = Email::try_from("user@example.com").unwrap();
+        assert_eq!(email.to_string(), "user@example.com");
+        let as_string: String = email.into();
+        assert_eq!(as_string, "user@example.com");
     }
 }

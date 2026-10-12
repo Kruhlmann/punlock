@@ -26,7 +26,7 @@ impl Bitwarden<()> {
             .ok();
         if let Some(ref d) = domain {
             Command::new("bw")
-                .args(["config", "server", &d])
+                .args(["config", "server", d])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()
@@ -77,7 +77,7 @@ impl Bitwarden<()> {
 impl Bitwarden<String> {
     pub async fn fetch(&self, entry: &PunlockConfigurationEntry) -> anyhow::Result<String> {
         let bw = Command::new("bw")
-            .args(["get", "item", &entry.id, "--session", &self.session])
+            .args(["get", "item", entry.id.as_ref(), "--session", &self.session])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -96,21 +96,7 @@ impl Bitwarden<String> {
         let data: serde_json::Value = serde_json::from_slice(&output.stdout)
             .inspect_err(|error| tracing::error!(?error, json = ?output.stdout, "invalid json"))?;
 
-        let expr = jmespath::compile(&entry.query)
-            .inspect_err(|error| tracing::error!(?error, ?entry, "input/expression mismatch"))?;
-        let result = expr
-            .search(&data)
-            .inspect_err(|error| tracing::error!(?error, ?expr, "query failed to apply"))?;
-
-        let secret = match result.as_string() {
-            Some(s) => s.to_owned(),
-            None => {
-                tracing::error!(?data, ?expr, "find secret");
-                anyhow::bail!("invalid item")
-            }
-        };
-
-        Ok(secret)
+        extract_secret(&data, &entry.query)
     }
 
     pub async fn logout(&self) -> anyhow::Result<()> {
@@ -123,5 +109,66 @@ impl Bitwarden<String> {
             .inspect(|_| tracing::debug!("spawn logout"))
             .inspect_err(|error| tracing::error!(?error, "spawn logout"))?;
         Ok(())
+    }
+}
+
+pub(crate) fn extract_secret(data: &serde_json::Value, query: &str) -> anyhow::Result<String> {
+    let expr = jmespath::compile(query)
+        .inspect_err(|error| tracing::error!(?error, ?query, "input/expression mismatch"))?;
+    let result = expr
+        .search(data)
+        .inspect_err(|error| tracing::error!(?error, ?expr, "query failed to apply"))?;
+
+    match result.as_string() {
+        Some(s) => Ok(s.to_owned()),
+        None => {
+            tracing::error!(?data, ?expr, "find secret");
+            anyhow::bail!("invalid item")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_a_string_value() {
+        let item = json!({ "login": { "username": "u", "password": "s3cr3t" } });
+        let secret = extract_secret(&item, "login.password").expect("should extract password");
+        assert_eq!(secret, "s3cr3t");
+    }
+
+    #[test]
+    fn extracts_custom_field_via_filter_and_index() {
+        let item = json!({
+            "fields": [
+                { "name": "other", "value": "ignored" },
+                { "name": "ssh_private_key", "value": "-----BEGIN KEY-----" }
+            ]
+        });
+        let query = "fields[?name=='ssh_private_key'].value | [0]";
+        let secret = extract_secret(&item, query).expect("should extract custom field");
+        assert_eq!(secret, "-----BEGIN KEY-----");
+    }
+
+    #[test]
+    fn rejects_query_that_yields_a_non_string() {
+        let item = json!({ "fields": [{ "name": "ssh_private_key", "value": "k" }] });
+        // a filter projection yields an array, not a string
+        assert!(extract_secret(&item, "fields[?name=='ssh_private_key'].value").is_err());
+    }
+
+    #[test]
+    fn rejects_missing_key() {
+        let item = json!({ "login": {} });
+        assert!(extract_secret(&item, "login.password").is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_jmespath_expression() {
+        let item = json!({});
+        assert!(extract_secret(&item, "fields[?name==").is_err());
     }
 }

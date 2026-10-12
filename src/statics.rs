@@ -19,4 +19,8 @@ lazy_static! {
         PathBuf::from("/etc/punlock/").join("CONFIG_FILE_NAME")]
     .to_vec();
     pub static ref EMAIL_REGEX: Regex = Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").unwrap();
+    pub static ref UUID_V4_REGEX: Regex = Regex::new(
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+    .unwrap();
 }

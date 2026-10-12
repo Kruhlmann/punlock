@@ -1,6 +1,6 @@
 use std::{
     os::unix::fs::PermissionsExt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
 };
@@ -97,11 +97,7 @@ impl UnixSecretStore {
 
                     if let Some(ref links) = entry.links {
                         for link in links {
-                            let link_path: PathBuf = if PathBuf::from(link).is_absolute() {
-                                PathBuf::from(link)
-                            } else {
-                                HOME_DIRECTORY.join(link)
-                            };
+                            let link_path = resolve_link_path(link, &HOME_DIRECTORY);
                             tokio::fs::create_dir_all(link_path.parent().unwrap_or(&link_path))
                                 .await?;
                             match tokio::fs::symlink_metadata(&link_path).await {
@@ -129,7 +125,7 @@ impl UnixSecretStore {
                             })
                             .inspect_err(|error| tracing::error!(src = ?path, dst = ?link_path, ?error, "symlink failed"))
                             .await
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))??;
+                            .map_err(std::io::Error::other)??;
 
                             tracing::info!(src =? path, destination = ?link_path, "created/updated symlink");
                         }
@@ -177,5 +173,55 @@ impl UnixSecretStore {
                 |error| tracing::error!(?error, path = ?self.root_path, "create runtime dir"),
             )?;
         Ok(self)
+    }
+}
+
+fn resolve_link_path(link: &str, home: &Path) -> PathBuf {
+    let path = PathBuf::from(link);
+    if path.is_absolute() {
+        return path;
+    }
+    if link == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = link.strip_prefix("~/") {
+        return home.join(rest);
+    }
+    home.join(link)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn absolute_link_paths_are_left_untouched() {
+        let home = Path::new("/home/testuser");
+        assert_eq!(
+            resolve_link_path("/etc/punlock/key", home),
+            PathBuf::from("/etc/punlock/key")
+        );
+    }
+
+    #[test]
+    fn tilde_is_expanded_to_home() {
+        let home = Path::new("/home/testuser");
+        assert_eq!(
+            resolve_link_path("~", home),
+            PathBuf::from("/home/testuser")
+        );
+        assert_eq!(
+            resolve_link_path("~/.ssh/id_rsa", home),
+            PathBuf::from("/home/testuser/.ssh/id_rsa")
+        );
+    }
+
+    #[test]
+    fn relative_link_paths_are_joined_onto_home() {
+        let home = Path::new("/home/testuser");
+        assert_eq!(
+            resolve_link_path("sub/key", home),
+            PathBuf::from("/home/testuser/sub/key")
+        );
     }
 }
